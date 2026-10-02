@@ -1,0 +1,76 @@
+Loading the image processor...
+Loading the AI model. The first run downloads its files...
+Florence-2 is ready!
+
+============================================================
+image_1.jpg
+============================================================
+
+--- Detailed caption (6.9s) ---
+The image shows a group of seven young people sitting on a blue blanket on a grassy field at night. They are gathered around a picnic basket, which is placed on the ground in front of them. The group appears to be engaged in a conversation, with some of them looking at each other and others looking at something in the distance. The sky is dark and the grass is green, suggesting that it is nighttime. The people are dressed in casual clothes, with one person wearing a striped shirt and another wearing a plaid shirt. The overall mood of the image is relaxed and casual.
+
+--- Read text (OCR) (3.1s) ---
+A
+
+--- List objects (4.8s) ---
+footwear
+human face
+human face
+human face
+human face
+human face
+man
+man
+man
+man
+man
+woman
+woman
+
+============================================================
+image_2.jpg
+============================================================
+
+--- Detailed caption (6.0s) ---
+The image shows a small blue boat on the water near a rocky shore. The boat is small and has a few people in it, one of whom is wearing an orange life jacket and is holding a fishing rod. The water is calm and there are small waves visible on the surface. On the left side of the image, there is a red and white lighthouse with a black railing. The sky is overcast and the overall mood of the photo is peaceful and serene.
+
+--- Read text (OCR) (3.1s) ---
+COURTESY PHOTOGRAPH
+
+--- List objects (3.6s) ---
+boat
+boat
+person
+
+============================================================
+image_3.jpg
+============================================================
+
+--- Detailed caption (5.8s) ---
+The image is a graphic design with a dark green background and a grungy texture. In the center of the image, there is an illustration of an owl's head with two large, pointed horns on either side. The owl's eyes are outlined in white and its beak is open, as if it is about to take flight. Above the owl, there are the words "Where the Wild Things Are" written in a cursive font in a light brown color. The overall style of the design is vintage and rustic.
+
+--- Read text (OCR) (3.6s) ---
+WHERETHEWILDTHiNGARE
+
+--- List objects (3.2s) ---
+poster
+
+============================================================
+image_4.png
+============================================================
+
+--- Detailed caption (8.6s) ---
+The image is a collection of nine learning charts for kids. Each chart has a colorful illustration and text on it. 
+
+The first chart on the top left shows the alphabet, numbers, and colors of the alphabet. The numbers are arranged in a grid-like pattern, with each chart representing a different day of the week. The colors include red, orange, yellow, green, blue, purple, and pink. The text on the chart reads "Alphabet, Numbers, Colors" and "Days of the Week". The chart also includes illustrations of a weather forecast, a cloud, a sun, a flower, and a heart.
+
+At the bottom of the chart, there are illustrations of two children, a boy and a girl, standing side by side with their arms around each other. The boy is wearing a blue shirt and the girl is wearing an orange dress. The background is white.
+
+--- Read text (OCR) (9.2s) ---
+myflearningLearning ChartspagesALPHABETNUMBERSCOLORSABCDE12345FGHIKIKE6789 10LMMOR6 7 8 9 14 15R.S.11 12 13 14 1516 17 18 19 20scten, seventeen, eighteen, sixteen, seven, sevenScten. seventeen, eight, sevenscteen, seventeen. seventeen. sevenSCTEN. SevenSCTen. Sevenscton. seventeenSCTeen. seventeen-eightSCTCN. twentyWEATHERDAYS OF THE WEEKSHAPESCLOURSUNDAYSUNDAYTUESDAYWEDNESDAYWendyTHURSDAYrestorediamondSATURDAYstarheartcrescentSCTORBODY PARTShairhaireyebroweareyeeyeeyebrowsnosemouthmouthneckarmarmneckshoulderhandhandstomachfingersfingerslegfootfootfootlegwww.mylearningpages.com
+
+--- List objects (3.8s) ---
+boy
+human face
+human face
+person
