@@ -14,8 +14,8 @@ Rough estimates, slowest to fastest:
 |---|---|
 | image_1 (group of people) | ~30 s |
 | image_4 (learning charts) | ~25 s |
-| image_2 (boat) | ~8 s |
-| image_3 (text poster) | ~4 s |
+| image_2 (boat) | ~12 s |
+| image_3 (text poster) | ~8 s |
 
 Possible reason the group of people took longest: it was the first one tested.
 
