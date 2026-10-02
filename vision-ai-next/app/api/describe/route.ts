@@ -2,11 +2,23 @@ import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+// Each prompt mirrors a Florence-2 task so the outputs can be compared.
+const PROMPTS: Record<string, string> = {
+  caption: "Describe this image in detail in one paragraph. Plain text only, no markdown.",
+  ocr: "Transcribe all the text in this image. Output only the text, nothing else.",
+  objects: "List the objects in this image. Output only short object names, one per line.",
+};
+
 export async function POST(req: Request) {
   const form = await req.formData();
   const image = form.get("image");
   if (!(image instanceof File)) {
     return Response.json({ error: "No image uploaded." }, { status: 400 });
+  }
+
+  const prompt = PROMPTS[String(form.get("task"))];
+  if (!prompt) {
+    return Response.json({ error: "Unknown task." }, { status: 400 });
   }
 
   const data = Buffer.from(await image.arrayBuffer()).toString("base64");
@@ -16,7 +28,7 @@ export async function POST(req: Request) {
       model: process.env.GEMINI_MODEL ?? "gemini-2.5-flash",
       contents: [
         { inlineData: { mimeType: image.type, data } },
-        { text: "Describe this image." },
+        { text: prompt },
       ],
     });
     return Response.json({ description: result.text });
