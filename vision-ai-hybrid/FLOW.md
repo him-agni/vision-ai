@@ -13,7 +13,7 @@ flowchart TD
         HASTEXT -->|yes| SCAN
         PAGEOCR --> SCAN
         TYPE -->|image| SCAN["2. Local scan: one gemma3 call<br/>reads the whole file and the question<br/>returns summary, text in image, private items, route + reason"]
-        SCAN --> PRIV["Privacy check, done in code<br/>patterns: phone, email, SSN, date of birth, account and ID numbers<br/>plus gemma3's flags: addresses and other IDs, matched even across line breaks<br/>gemma3's date-of-birth flags kept only next to a birth label"]
+        SCAN --> PRIV["Privacy check, done in code<br/>patterns: address, phone, email, SSN, date of birth, account and ID numbers<br/>plus gemma3's flags as an extra layer, matched even across line breaks<br/>gemma3's date-of-birth flags kept only next to a birth label"]
         PRIV --> ROUTE{"Route?<br/>1. --route if given<br/>2. cloud if the question says explain, suggest, recommend,<br/>advise, compare, plan, budget, why, should, what does ... mean<br/>3. local if it says when, how much, how many, find, list, show,<br/>what is/was/are/were my/the<br/>4. otherwise gemma3's pick"}
         ROUTE -->|local| LANS["3. gemma3 answers<br/>from the full file"]
         ROUTE -->|cloud| KEY{"GEMINI_API_KEY set?"}

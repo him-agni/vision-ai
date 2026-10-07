@@ -73,7 +73,7 @@ PDF or image + question
   1. Local read     PDF text is pulled out directly; scanned pages are read by Gemma 3
   2. Local scan     One Gemma 3 call reads the whole file and the question:
                     - summarises it and flags private info (patterns also catch
-                      phone, email, SSN, date of birth, account and ID numbers)
+                      addresses, phone, email, SSN, date of birth, account and ID numbers)
                     - picks "local" (answer is in the file: find, summarise, describe)
                       or "cloud" (outside knowledge, reasoning, advice)
                     Questions that ask to explain, suggest, advise, compare, plan

@@ -17,9 +17,10 @@
 | B re-run | 9ff1507 | health_summary.pdf | Explain my lab results in simple terms and what lifestyle changes would help | cloud (keyword "Explain"), answered `y` | 63.3 s | 3.2 s | gemini-2.5-flash-lite (cloud, redacted text only) |
 | C | 9ff1507 | health_summary.pdf | Same as B, answered `n` | cloud, answered `n` | not in screenshot | 68.5 s | gemma3:4b (local) |
 | D | 9ff1507 | bank_statement.pdf | What was my closing balance? | cloud (expected local) | 72.4 s | not in screenshot | not in screenshot |
-| E | | bank_statement.pdf | Group my spending by category and suggest a monthly budget | | | | |
-| F | | bank_statement.pdf | Same as E, `--route local` | | | | |
-| G | | bank_statement.pdf | Is account 004821937552 at risk of going overdrawn next month, and how would that affect my credit score? | | | | |
+| D re-run | e26449d | bank_statement.pdf | What was my closing balance? | local (keyword "What was my") | 65.5 s | 30.3 s | gemma3:4b (local) |
+| E | e26449d | bank_statement.pdf | Group my spending by category and suggest a monthly budget | cloud (keyword "suggest"), answered `y` | 64.3 s | 8.5 s | gemini-2.5-flash-lite (cloud, redacted text only) |
+| F | e26449d | bank_statement.pdf | Same as E, `--route local` | local (forced with --route) | 66.1 s | 121.5 s | gemma3:4b (local) |
+| G | e26449d | bank_statement.pdf | Is account 004821937552 at risk of going overdrawn next month, and how would that affect my credit score? | local (gemma3's pick) | 78.9 s | 58.0 s | gemma3:4b (local) |
 | H | | image_3.jpg | Who wrote this book and what is it about? | | | | |
 | I | | image_3.jpg | Same as H, with a bad API key | | | | |
 
@@ -282,3 +283,185 @@ Mailing address
 The screenshot ends here; the y/N answer and the final answer are not shown.
 
 **Notes:**
+
+## Test D re-run: bank statement, closing balance
+
+Code: `e26449d`
+
+```powershell
+python hybrid.py ..ilesank_statement.pdf "What was my closing balance?"
+```
+
+[Screenshot](screenshots/test_d2_bank_closing_balance.png)
+
+```
+--- 1. Local read (no AI for text pages) ---
+Page 1: text layer (1,264 chars)
+Page 2: text layer (1,102 chars)
+(0.0s)
+
+--- 2. Local scan: summary, private info, route (gemma3:4b) ---
+(65.5s)
+Summary: This document is a checking account statement for the period September 1, 2026 - September 30,
+2026. It details the opening balance, deposits, withdrawals, and the final closing balance. The statement
+includes a list of transactions made during the period, categorized by date, description, amount, and
+balance. The account holder's information, including mailing address and contact details, is also provided.
+Private info: YES. Redacted: ID NUMBER x3, PHONE x2, EMAIL x1, BANK ACCOUNT x1
+Route: local ("What was my" is a lookup question, which stays local)
+
+--- 3. Local answer (gemma3:4b) ---
+(30.3s)
+
+=== Answer from gemma3:4b (local) ===
+According to the document, Jordan A. Rivera's closing balance was $5,655.42.
+```
+
+The screenshot is cut off below the first line of the answer.
+
+**Notes:**
+
+## Test E: bank statement, spending by category and budget
+
+Code: `e26449d`
+
+```powershell
+python hybrid.py ..ilesank_statement.pdf "Group my spending by category and suggest a monthly budget"
+```
+
+Screenshots: [1](screenshots/test_e_bank_budget_1.png), [2](screenshots/test_e_bank_budget_2.png), [3](screenshots/test_e_bank_budget_3.png), [4](screenshots/test_e_bank_budget_4.png), [5](screenshots/test_e_bank_budget_5.png), [6](screenshots/test_e_bank_budget_6.png), [7](screenshots/test_e_bank_budget_7.png), [8](screenshots/test_e_bank_budget_8.png)
+
+```
+--- 1. Local read (no AI for text pages) ---
+Page 1: text layer (1,264 chars)
+Page 2: text layer (1,102 chars)
+(0.0s)
+
+--- 2. Local scan: summary, private info, route (gemma3:4b) ---
+(64.3s)
+Summary: This statement details the transactions for an Everyday Checking Account held by Jordan A. Rivera
+from September 1, 2026, to September 30, 2026. The account opened with a balance of $3,482.17 and
+experienced several deposits, primarily from Brightline Software Inc. and ATM withdrawals. Various
+purchases were made, including groceries, subscriptions, and utilities. The statement concludes with a
+closing balance of $5,655.42 and a small interest earned.
+Private info: YES. Redacted: ID NUMBER x4, PHONE x2, EMAIL x1
+Route: cloud (the question asks to "suggest", which always goes to the cloud)
+
+The file has private info, so it will NOT be sent to the cloud.
+Only this redacted text would be sent (2,532 chars):
+
+Document (private details replaced with tags like [PHONE]):
+--- Page 1 ---
+Northfield Community Bank
+PO Box 4100, Springfield, IL 62705 | Customer service [PHONE]
+Checking Account Statement
+Account holder   Jordan A. Rivera
+Mailing address   742 Maple Grove Lane, Apt 5B, Springfield, IL 62704
+Phone   [PHONE]
+Email   [EMAIL]
+Account type   Everyday Checking
+Account number   [ID NUMBER]
+Routing number   [ID NUMBER]
+Debit card   [ID NUMBER]
+Statement period   September 1, 2026 - September 30, 2026
+Summary
+Opening balance   Deposits   Withdrawals   Closing balance
+$3,482.17   $5,751.92   $3,578.67   $5,655.42
+Transactions
+Date   Description   Amount   Balance
+09/01   Opening balance   3,482.17
+09/01   Rent payment - Oakwood Apartments   -1,650.00   1,832.17
+09/01   Payroll deposit - Brightline Software Inc   +2,875.40   4,707.57
+09/02   Whole Foods Market   -86.42   4,621.15
+09/03   Starbucks   -6.75   4,614.40
+09/03   Netflix subscription   -15.49   4,598.91
+09/04   Shell gas station   -4
+[...]
+
+Send the redacted text and question to Gemini? [y/N] y
+
+--- 3. Cloud answer (gemini-2.5-flash-lite, redacted text only) ---
+(8.5s)
+```
+
+The answer (from `gemini-2.5-flash-lite (cloud, redacted text only)`) has two parts. "Spending by Category
+(September 2026)" groups the transactions into Food & Dining, Subscriptions & Recurring Bills, Shopping &
+Entertainment, Personal & Miscellaneous, Savings & Investments and Income, with totals. "Suggested Monthly
+Budget" covers income, essential expenses, discretionary spending and savings, followed by "Key
+Observations and Recommendations" and "How to Use This Budget". Full text in screenshots 3 to 8.
+
+**Notes:**
+
+## Test F: bank statement, spending by category and budget, forced local
+
+Code: `e26449d`
+
+```powershell
+python hybrid.py ..ilesank_statement.pdf "Group my spending by category and suggest a monthly budget" --route local
+```
+
+Screenshots: [1](screenshots/test_f_bank_budget_local_1.png), [2](screenshots/test_f_bank_budget_local_2.png), [3](screenshots/test_f_bank_budget_local_3.png), [4](screenshots/test_f_bank_budget_local_4.png)
+
+```
+--- 1. Local read (no AI for text pages) ---
+Page 1: text layer (1,264 chars)
+Page 2: text layer (1,102 chars)
+(0.0s)
+
+--- 2. Local scan: summary, private info, route (gemma3:4b) ---
+(66.1s)
+Summary: This statement details the transactions for an Everyday Checking Account held by Jordan A. Rivera
+from September 1, 2026, to September 30, 2026. The account opened with a balance of $3,482.17 and
+experienced several deposits, primarily from Brightline Software Inc. and ATM withdrawals. Various
+purchases were made, including groceries, subscriptions, and utilities. The statement concludes with a
+closing balance of $5,655.42 and a small interest earned.
+Private info: YES. Redacted: ID NUMBER x4, PHONE x2, EMAIL x1
+Route: local (forced with --route)
+
+--- 3. Local answer (gemma3:4b) ---
+(121.5s)
+```
+
+The answer (from `gemma3:4b (local)`) has a "Spending Category Breakdown (September 2026)" with Food & Drink,
+Utilities & Bills, Transportation, Entertainment, Shopping and Other, listing transactions with dates; a
+"Suggested Monthly Budget" with a range per category and a total estimate of $1300 - $2000; and "Important
+Notes". Full text in screenshots 2 to 4.
+
+**Notes:**
+
+## Test G: bank statement, account number typed in the question
+
+Code: `e26449d`
+
+```powershell
+python hybrid.py ..ilesank_statement.pdf "Is account 004821937552 at risk of going overdrawn next month, and how would that affect my credit score?"
+```
+
+Screenshots: [1](screenshots/test_g_bank_overdraft_1.png), [2](screenshots/test_g_bank_overdraft_2.png)
+
+```
+--- 1. Local read (no AI for text pages) ---
+Page 1: text layer (1,264 chars)
+Page 2: text layer (1,102 chars)
+(0.0s)
+
+--- 2. Local scan: summary, private info, route (gemma3:4b) ---
+(78.9s)
+Summary: This document is a checking account statement for an Everyday Checking account. It details the
+account holder's transactions and balances over the period from September 1, 2026, to September 30, 2026.
+The statement shows opening and closing balances, as well as a list of deposits and withdrawals. The
+account type is Everyday Checking and the account number is [ID NUMBER]. The routing number is [ID NUMBER].
+Private info: YES. Redacted: ID NUMBER x2, PHONE x2, EMAIL x1, BANK ACCOUNT x2
+Route: local (The question asks about the account's risk of going overdrawn and its effect on the credit
+score, which can be answered by directly examining the provided transaction data.)
+
+--- 3. Local answer (gemma3:4b) ---
+(58.0s)
+```
+
+The answer (from `gemma3:4b (local)`) covers "Risk of Overdraft" (recent withdrawals, balance of $5,655.42 on
+September 30, 2026, no large scheduled withdrawals shown), "How Overdraft Could Affect Credit Score", and ends
+with a disclaimer that it is not financial advice. Full text in screenshot 2.
+
+The route was local, so the question-redaction step (which only runs for the cloud) was not exercised.
+
+**Notes:** Did not go to the cloud. The local model's answer feels right here, and it added a disclaimer.
