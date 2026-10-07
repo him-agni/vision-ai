@@ -71,11 +71,12 @@ The script loads the model once, then runs all three tasks on every image in `im
 ```
 PDF or image + question
   1. Local read     PDF text is pulled out directly; scanned pages are read by Gemma 3
-  2. Local scan     Gemma 3 summarises and flags private info; patterns catch
-                    phone, email, SSN, date of birth, account and ID numbers
-  3. Local router   Gemma 3 picks "local" (summarise, find, describe)
-                    or "cloud" (outside knowledge, reasoning, advice)
-  4. Answer         local                  -> Gemma 3 answers
+  2. Local scan     One Gemma 3 call reads the whole file and the question:
+                    - summarises it and flags private info (patterns also catch
+                      phone, email, SSN, date of birth, account and ID numbers)
+                    - picks "local" (answer is in the file: find, summarise, describe)
+                      or "cloud" (outside knowledge, reasoning, advice)
+  3. Answer         local                  -> Gemma 3 answers
                     cloud, nothing private -> whole file goes to Gemini
                     cloud, private         -> asks first, then sends only redacted text
                     Gemini fails / no key  -> Gemma 3 answers

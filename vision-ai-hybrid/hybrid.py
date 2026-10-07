@@ -53,57 +53,56 @@ PATTERNS = [
 
 READ_PAGE_PROMPT = "Transcribe all the text on this page. Output only the text, nothing else."
 
-SCAN_RULES = """- summary: 3-5 sentences on what this is and its main points. Leave out personal
-  details: no names, numbers, addresses or account details.
-- private_items: every piece of private information, copied exactly as it appears:
+# One local call reads the whole file and does three jobs: summary, private details, route.
+# The fields are filled in this order, so private details are found before the route is chosen.
+SUMMARY_RULE = """- summary: 3-5 sentences on what this is and its main points. Leave out personal
+  details: no names, numbers, addresses or account details."""
+
+VISIBLE_TEXT_RULE = """- visible_text: all the text you can read in the image, or "" if none."""
+
+PRIVATE_RULE = """- private_items: every piece of private information, copied exactly as it appears:
   ID numbers (passport, driver's licence, social security), phone numbers, home or
   mailing addresses, bank account or card numbers, health insurance numbers, emails,
   dates of birth. Use an empty list if there are none."""
 
-PDF_SCAN_PROMPT = "Read this document and fill in the JSON fields.\n" + SCAN_RULES + "\n\nDocument:\n{text}"
+ROUTE_RULE = """- route: which AI should answer the question below.
+  "local" (a small model on this computer) if the answer is written in the file:
+  finding a date, value, name or section, quoting or summarising it, describing
+  what is visible, reading text, listing objects.
+  "cloud" (a large model online) only if the question needs more than the file:
+  outside knowledge (facts about places, books, products, laws, prices),
+  explanations or advice, calculations across many values, or long careful writing.
+- reason: one sentence explaining the route."""
 
-IMAGE_SCAN_PROMPT = ("Look at this image and fill in the JSON fields.\n" + SCAN_RULES +
-                     "\n- visible_text: all the text you can read in the image, or \"\" if none.")
 
-ROUTE_PROMPT = """You decide which AI should answer a question about a file.
-- "local": a small model on this computer. Good for summarising, finding a value
-  or date, quoting a section, describing what is visible, reading text, listing objects.
-- "cloud": a large model online. Needed for outside knowledge (facts about places,
-  books, products, laws, prices), multi-step reasoning, calculations across many
-  values, advice, or long careful writing.
-
-Summary of the file: {summary}
-Question: {question}
-
-Reply with the route and a one-sentence reason."""
-
-ROUTE_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "route": {"type": "string", "enum": ["local", "cloud"]},
-        "reason": {"type": "string"},
-    },
-    "required": ["route", "reason"],
-}
+def scan_prompt(question, text=None):
+    if text is None:
+        intro, rules = "Look at this image", [SUMMARY_RULE, VISIBLE_TEXT_RULE, PRIVATE_RULE, ROUTE_RULE]
+    else:
+        intro, rules = "Read this document", [SUMMARY_RULE, PRIVATE_RULE, ROUTE_RULE]
+    prompt = f"{intro} and fill in the JSON fields.\n" + "\n".join(rules) + f"\n\nQuestion: {question}"
+    if text is not None:
+        prompt += f"\n\nDocument:\n{text}"
+    return prompt
 
 
 def scan_schema(with_visible_text):
-    properties = {
-        "summary": {"type": "string"},
-        "private_items": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "type": {"type": "string", "enum": PRIVATE_TYPES},
-                    "text": {"type": "string"},
-                },
-                "required": ["type", "text"],
-            },
-        },
-    }
+    properties = {"summary": {"type": "string"}}
     if with_visible_text:
         properties["visible_text"] = {"type": "string"}
+    properties["private_items"] = {
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "enum": PRIVATE_TYPES},
+                "text": {"type": "string"},
+            },
+            "required": ["type", "text"],
+        },
+    }
+    properties["route"] = {"type": "string", "enum": ["local", "cloud"]}
+    properties["reason"] = {"type": "string"}
     return {"type": "object", "properties": properties, "required": list(properties)}
 
 
@@ -122,7 +121,11 @@ def ask_cloud(prompt, file_path=None):
     if file_path:
         mime_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
         contents.insert(0, types.Part.from_bytes(data=file_path.read_bytes(), mime_type=mime_type))
-    result = client.models.generate_content(model=CLOUD_MODEL, contents=contents)
+    # We never give Gemini tools, so turn off automatic function calling (and its warning).
+    config = types.GenerateContentConfig(
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+    )
+    result = client.models.generate_content(model=CLOUD_MODEL, contents=contents, config=config)
     return result.text.strip()
 
 
@@ -151,18 +154,31 @@ def read_pdf(path, max_pages):
 
 
 def redact(text, model_items):
-    """Replace private details with tags like [PHONE]. Returns the new text and what was found."""
-    found = {}
+    """Replace private details with tags like [PHONE].
+
+    Returns the new text, what was redacted, and the model's flags that were not redacted (with why).
+    """
+    found, skipped = {}, []
     for item in model_items:
         value = item["text"].strip()
-        if len(value) >= 4 and value in text:
-            found[item["type"]] = found.get(item["type"], 0) + text.count(value)
-            text = text.replace(value, f"[{item['type']}]")
+        if len(value) < 4 or value not in text:
+            skipped.append((item, "not found word-for-word"))
+            continue
+        starts = [m.start() for m in re.finditer(re.escape(value), text)]
+        if item["type"] == "DATE OF BIRTH":
+            # The model sometimes flags any date, so only trust it right after a birth label.
+            starts = [s for s in starts if re.search(r"(?i)\b(?:dob|birth|born)\b", text[max(0, s - 30):s])]
+            if not starts:
+                skipped.append((item, "no birth label next to it"))
+                continue
+        for s in reversed(starts):
+            text = text[:s] + f"[{item['type']}]" + text[s + len(value):]
+        found[item["type"]] = found.get(item["type"], 0) + len(starts)
     for kind, pattern in PATTERNS:
         text, count = re.subn(pattern, f"[{kind}]", text)
         if count:
             found[kind] = found.get(kind, 0) + count
-    return text, found
+    return text, found, skipped
 
 
 def step(label, fn, *args, **kwargs):
@@ -178,7 +194,7 @@ def main():
     parser.add_argument("file", type=Path, help="a .pdf, .jpg, .jpeg, .png or .webp file")
     parser.add_argument("question")
     parser.add_argument("--route", choices=["auto", "local", "cloud"], default="auto",
-                        help="skip the router and force a route (default: auto)")
+                        help="override the route the local scan picks (default: auto)")
     parser.add_argument("--pages", type=int, default=10, help="how many PDF pages to read locally (default: 10)")
     parser.add_argument("--yes", action="store_true",
                         help="don't ask before sending redacted text of a private file to the cloud")
@@ -192,67 +208,70 @@ def main():
     print(f"File: {args.file.name}\nQuestion: {args.question}")
     print(f"Local model: {LOCAL_MODEL}   Cloud model: {CLOUD_MODEL}")
 
-    # 1. Read the file locally.
+    # 1. Read the file, and 2. scan it, all locally.
     if is_pdf:
         text = step("1. Local read (no AI for text pages)", read_pdf, args.file, args.pages)
-        scan = step(f"2. Local scan ({LOCAL_MODEL})", ask_local,
-                    PDF_SCAN_PROMPT.format(text=text), schema=scan_schema(False))
+        scan = step(f"2. Local scan: summary, private info, route ({LOCAL_MODEL})", ask_local,
+                    scan_prompt(args.question, text), schema=scan_schema(False))
     else:
         print("\n--- 1. Local read: skipped for images ---")
-        scan = step(f"2. Local scan ({LOCAL_MODEL})", ask_local,
-                    IMAGE_SCAN_PROMPT, images=[str(args.file)], schema=scan_schema(True))
+        scan = step(f"2. Local scan: summary, private info, route ({LOCAL_MODEL})", ask_local,
+                    scan_prompt(args.question), images=[str(args.file)], schema=scan_schema(True))
         text = scan["visible_text"]
         print(f"Text in image: {text or '(none)'}")
 
-    # 2. Check for private details: patterns plus whatever the model flagged.
-    redacted, found = redact(text, scan["private_items"])
+    # Privacy is decided here in code, not by the route: patterns plus whatever the model flagged.
+    redacted, found, skipped = redact(text, scan["private_items"])
     is_private = bool(found or scan["private_items"])
     print(f"Summary: {scan['summary']}")
     if is_private:
         flagged = ", ".join(f"{kind} x{count}" for kind, count in found.items()) or "none matched in text"
         print(f"Private info: YES. Redacted: {flagged}")
-        missed = [i for i in scan["private_items"] if i["text"].strip() not in text]
-        for item in missed:
-            print(f"  {LOCAL_MODEL} also flagged {item['type']}: '{item['text']}' (not found word-for-word, not redacted)")
+        for item, why in skipped:
+            print(f"  {LOCAL_MODEL} also flagged {item['type']}: '{item['text']}' (not redacted: {why})")
     else:
         print("Private info: none found")
 
-    # 3. Decide where to answer.
     if args.route == "auto":
-        decision = step(f"3. Local router ({LOCAL_MODEL})", ask_local,
-                        ROUTE_PROMPT.format(summary=scan["summary"], question=args.question), schema=ROUTE_SCHEMA)
-        route = decision["route"]
-        print(f"Route: {route} ({decision['reason']})")
+        route = scan["route"]
+        print(f"Route: {route} ({scan['reason']})")
     else:
         route = args.route
-        print(f"\n--- 3. Route forced: {route} ---")
+        print(f"Route: {route} (forced with --route)")
 
-    # 4. Answer.
+    # Anything typed in the question gets the same redaction before it can reach the cloud.
+    cloud_question, _, _ = redact(args.question, scan["private_items"])
+    if route == "cloud" and cloud_question != args.question:
+        print(f"Question redacted for the cloud: {cloud_question}")
+
+    # 3. Answer.
     answer, answered_by = None, None
     if route == "cloud":
         if not os.getenv("GEMINI_API_KEY"):
             print("\nNo GEMINI_API_KEY set, so answering locally instead.")
         elif not is_private:
             try:
-                answer = step(f"4. Cloud answer ({CLOUD_MODEL}, whole file sent)",
-                              ask_cloud, args.question, args.file)
+                answer = step(f"3. Cloud answer ({CLOUD_MODEL}, whole file sent)",
+                              ask_cloud, cloud_question, args.file)
                 answered_by = f"{CLOUD_MODEL} (cloud, whole file)"
             except Exception as err:
                 print(f"Cloud failed ({err}), answering locally instead.")
         else:
+            if is_pdf:
+                context = f"Document (private details replaced with tags like [PHONE]):\n{redacted}"
+            else:
+                summary, _, _ = redact(scan["summary"], scan["private_items"])
+                context = (f"Description of an image: {summary}\n\n"
+                           f"Text in the image (private details replaced with tags like [PHONE]):\n{redacted}")
+            prompt = f"{context}\n\nAnswer this question using the information above: {cloud_question}"
+
             print("\nThe file has private info, so it will NOT be sent to the cloud.")
-            print(f"Only this redacted text would be sent ({len(redacted):,} chars):\n")
-            print(redacted[:1000] + ("\n[...]" if len(redacted) > 1000 else ""))
+            print(f"Only this redacted text would be sent ({len(prompt):,} chars):\n")
+            print(prompt[:1000] + ("\n[...]" if len(prompt) > 1000 else ""))
             send = args.yes or input("\nSend the redacted text and question to Gemini? [y/N] ").strip().lower() == "y"
             if send:
-                if is_pdf:
-                    context = f"Document (private details replaced with tags like [PHONE]):\n{redacted}"
-                else:
-                    context = (f"Description of an image: {scan['summary']}\n\n"
-                               f"Text in the image (private details replaced with tags like [PHONE]):\n{redacted}")
-                prompt = f"{context}\n\nAnswer this question using the information above: {args.question}"
                 try:
-                    answer = step(f"4. Cloud answer ({CLOUD_MODEL}, redacted text only)", ask_cloud, prompt)
+                    answer = step(f"3. Cloud answer ({CLOUD_MODEL}, redacted text only)", ask_cloud, prompt)
                     answered_by = f"{CLOUD_MODEL} (cloud, redacted text only)"
                 except Exception as err:
                     print(f"Cloud failed ({err}), answering locally instead.")
@@ -260,9 +279,9 @@ def main():
     if answer is None:
         if is_pdf:
             prompt = f"Answer the question using this document.\n\nDocument:\n{text}\n\nQuestion: {args.question}"
-            answer = step(f"4. Local answer ({LOCAL_MODEL})", ask_local, prompt)
+            answer = step(f"3. Local answer ({LOCAL_MODEL})", ask_local, prompt)
         else:
-            answer = step(f"4. Local answer ({LOCAL_MODEL})", ask_local, args.question, images=[str(args.file)])
+            answer = step(f"3. Local answer ({LOCAL_MODEL})", ask_local, args.question, images=[str(args.file)])
         answered_by = f"{LOCAL_MODEL} (local)"
 
     print(f"\n=== Answer from {answered_by} ===\n{answer}")
