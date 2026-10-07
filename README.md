@@ -64,17 +64,57 @@ python app.py | Tee-Object results.txt
 
 The script loads the model once, then runs all three tasks on every image in `images/` and prints each result with the time it took.
 
+## Hybrid: local + cloud together
+
+[`vision-ai-hybrid/`](vision-ai-hybrid/) uses both kinds of model in one flow, so you don't have to pick one. The local model (Gemma 3 via Ollama) reads the file first and keeps private data on your computer. Gemini is only used when the question needs it.
+
+```
+PDF or image + question
+  1. Local read     PDF text is pulled out directly; scanned pages are read by Gemma 3
+  2. Local scan     Gemma 3 summarises and flags private info; patterns catch
+                    phone, email, SSN, date of birth, account and ID numbers
+  3. Local router   Gemma 3 picks "local" (summarise, find, describe)
+                    or "cloud" (outside knowledge, reasoning, advice)
+  4. Answer         local                  -> Gemma 3 answers
+                    cloud, nothing private -> whole file goes to Gemini
+                    cloud, private         -> asks first, then sends only redacted text
+                    Gemini fails / no key  -> Gemma 3 answers
+```
+
+Requires Python 3.10+, [Ollama](https://ollama.com) and optionally a Gemini API key.
+
+```powershell
+ollama pull gemma3:4b
+cd vision-ai-hybrid
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env   # then paste your key into GEMINI_API_KEY
+```
+
+Put your PDFs in `vision-ai/files/` (git-ignored, so private documents are never committed), then pass the file path and your question:
+
+```powershell
+python hybrid.py ..\files\my-doc.pdf "What is the due date and amount?"
+python hybrid.py ..\images\image_3.jpg "Who wrote this book?"
+python hybrid.py ..\files\my-doc.pdf "Summarise it" --route cloud   # force a route
+python hybrid.py ..\files\big.pdf "Summarise it" --pages 25         # read more pages (default 10)
+```
+
 ## Project structure
 
 ```
 vision-ai/
 ├── images/                  test images used by both models
+├── files/                   your test PDFs (git-ignored)
 ├── vision-ai-next/          Gemini via API
 │   └── app/
 │       ├── page.tsx               upload page with task picker
 │       └── api/describe/route.ts  sends the image + prompt to Gemini
 ├── vision-ai-next-report/   Gemini findings and screenshots
-└── vision-ai-florence/      Florence-2, running locally
-    ├── app.py                     runs all tasks on all images
-    └── results.txt                Florence-2 output
+├── vision-ai-florence/      Florence-2, running locally
+│   ├── app.py                     runs all tasks on all images
+│   └── results.txt                Florence-2 output
+└── vision-ai-hybrid/        Gemma 3 (local) + Gemini (cloud) together
+    └── hybrid.py                  reads a PDF or image, routes the question
 ```
