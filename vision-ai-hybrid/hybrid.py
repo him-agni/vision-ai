@@ -51,6 +51,17 @@ PATTERNS = [
     ("ID NUMBER", r"\b(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{8,20}\b"),
 ]
 
+BIRTH_LABEL = r"(?i)\b(?:dob|birth|born)\b"
+
+# Questions asking for explanation, advice or planning always go to the cloud, even when
+# the data is in the file. The local model only picks the route when none of these appear.
+CLOUD_QUESTION = re.compile(
+    r"(?i)\b(?:explain\w*|suggest\w*|recommend\w*|advi[cs]e\w*|compar\w*|plan|planning|"
+    r"budget\w*|why|should|what (?:does|do) .+ mean)\b"
+)
+
+NOT_FOUND = "could not find it in the text, check the preview"
+
 READ_PAGE_PROMPT = "Transcribe all the text on this page. Output only the text, nothing else."
 
 # One local call reads the whole file and does three jobs: summary, private details, route.
@@ -72,6 +83,7 @@ ROUTE_RULE = """- route: which AI should answer the question below.
   "cloud" (a large model online) only if the question needs more than the file:
   outside knowledge (facts about places, books, products, laws, prices),
   explanations or advice, calculations across many values, or long careful writing.
+  Explaining what values mean or giving advice is "cloud", even if the data is in the file.
 - reason: one sentence explaining the route."""
 
 
@@ -153,31 +165,49 @@ def read_pdf(path, max_pages):
     return text
 
 
+def flexible(value):
+    """Regex for a value that still matches when its spaces became line breaks in the PDF text."""
+    return r"\s+".join(re.escape(part) for part in value.split())
+
+
+def mask(value):
+    """Hide most of a private value so warnings don't print it, e.g. 'BR*********36'."""
+    return value[:2] + "*" * (len(value) - 4) + value[-2:] if len(value) > 6 else "*" * len(value)
+
+
 def redact(text, model_items):
     """Replace private details with tags like [PHONE].
 
-    Returns the new text, what was redacted, and the model's flags that were not redacted (with why).
+    Returns the new text, what was redacted, and the model's flags that are still visible (with why).
     """
+    original = text
     found, skipped = {}, []
     for item in model_items:
         value = item["text"].strip()
-        if len(value) < 4 or value not in text:
-            skipped.append((item, "not found word-for-word"))
+        if len(value) < 4:
             continue
-        starts = [m.start() for m in re.finditer(re.escape(value), text)]
+        spans = [m.span() for m in re.finditer(flexible(value), text)]
+        if not spans:
+            # Already replaced by an earlier flag, or the model didn't copy it exactly.
+            if not re.search(flexible(value), original):
+                skipped.append((item, NOT_FOUND))
+            continue
         if item["type"] == "DATE OF BIRTH":
             # The model sometimes flags any date, so only trust it right after a birth label.
-            starts = [s for s in starts if re.search(r"(?i)\b(?:dob|birth|born)\b", text[max(0, s - 30):s])]
-            if not starts:
+            spans = [(s, e) for s, e in spans if re.search(BIRTH_LABEL, text[max(0, s - 30):s])]
+            if not spans:
                 skipped.append((item, "no birth label next to it"))
                 continue
-        for s in reversed(starts):
-            text = text[:s] + f"[{item['type']}]" + text[s + len(value):]
-        found[item["type"]] = found.get(item["type"], 0) + len(starts)
+        for s, e in reversed(spans):
+            text = text[:s] + f"[{item['type']}]" + text[e:]
+        found[item["type"]] = found.get(item["type"], 0) + len(spans)
     for kind, pattern in PATTERNS:
         text, count = re.subn(pattern, f"[{kind}]", text)
         if count:
             found[kind] = found.get(kind, 0) + count
+    # Drop warnings for values a pattern ended up redacting anyway.
+    skipped = [(item, why) for item, why in skipped
+               if why == NOT_FOUND or re.search(flexible(item["text"].strip()), text)]
     return text, found, skipped
 
 
@@ -228,16 +258,20 @@ def main():
         flagged = ", ".join(f"{kind} x{count}" for kind, count in found.items()) or "none matched in text"
         print(f"Private info: YES. Redacted: {flagged}")
         for item, why in skipped:
-            print(f"  {LOCAL_MODEL} also flagged {item['type']}: '{item['text']}' (not redacted: {why})")
+            print(f"  {LOCAL_MODEL} also flagged {item['type']}: '{mask(item['text'].strip())}' (not redacted: {why})")
     else:
         print("Private info: none found")
 
-    if args.route == "auto":
-        route = scan["route"]
-        print(f"Route: {route} ({scan['reason']})")
-    else:
+    cloud_word = CLOUD_QUESTION.search(args.question)
+    if args.route != "auto":
         route = args.route
         print(f"Route: {route} (forced with --route)")
+    elif cloud_word:
+        route = "cloud"
+        print(f"Route: cloud (the question asks to \"{cloud_word.group(0)}\", which always goes to the cloud)")
+    else:
+        route = scan["route"]
+        print(f"Route: {route} ({scan['reason']})")
 
     # Anything typed in the question gets the same redaction before it can reach the cloud.
     cloud_question, _, _ = redact(args.question, scan["private_items"])
