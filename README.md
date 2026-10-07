@@ -76,11 +76,15 @@ PDF or image + question
                       phone, email, SSN, date of birth, account and ID numbers)
                     - picks "local" (answer is in the file: find, summarise, describe)
                       or "cloud" (outside knowledge, reasoning, advice)
+                    Questions that ask to explain, suggest, advise, compare, plan
+                    or budget always go to the cloud, whatever Gemma 3 picks
   3. Answer         local                  -> Gemma 3 answers
                     cloud, nothing private -> whole file goes to Gemini
                     cloud, private         -> asks first, then sends only redacted text
                     Gemini fails / no key  -> Gemma 3 answers
 ```
+
+Full flow diagram: [`vision-ai-hybrid/FLOW.md`](vision-ai-hybrid/FLOW.md). Test results: [`vision-ai-hybrid/test-results/results.md`](vision-ai-hybrid/test-results/results.md).
 
 Requires Python 3.10+, [Ollama](https://ollama.com) and optionally a Gemini API key.
 
@@ -117,5 +121,7 @@ vision-ai/
 │   ├── app.py                     runs all tasks on all images
 │   └── results.txt                Florence-2 output
 └── vision-ai-hybrid/        Gemma 3 (local) + Gemini (cloud) together
-    └── hybrid.py                  reads a PDF or image, routes the question
+    ├── hybrid.py                  reads a PDF or image, routes the question
+    ├── FLOW.md                    flow diagram
+    └── test-results/              test outputs and screenshots
 ```
