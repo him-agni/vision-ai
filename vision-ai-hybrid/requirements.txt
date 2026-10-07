@@ -1,0 +1,4 @@
+ollama
+google-genai
+pymupdf
+python-dotenv
