@@ -37,16 +37,30 @@ LOCAL_OPTIONS = {"temperature": 0, "num_ctx": 16384}
 PRIVATE_TYPES = ["ID NUMBER", "PHONE", "ADDRESS", "BANK ACCOUNT", "HEALTH INSURANCE",
                  "EMAIL", "DATE OF BIRTH", "OTHER"]
 
+STREET_TYPES = ("Street|St|Avenue|Ave|Road|Rd|Lane|Ln|Drive|Dr|Boulevard|Blvd|Court|Ct|Way|Place|Pl|"
+                "Terrace|Ter|Circle|Cir|Parkway|Pkwy|Highway|Hwy")
+CITY_STATE_ZIP = r"(?:,[ \t]*[A-Z][a-zA-Z.]*(?:[ \t]+[A-Z][a-zA-Z.]*)*,[ \t]*[A-Z]{2}[ \t]+\d{5}(?:-\d{4})?)?"
+
 # Patterns catch the obvious private details reliably, without relying on the model.
 # Order matters: earlier patterns are replaced first, so later ones can't re-match them.
+# An optional third item is the replacement; the default is the tag, e.g. [PHONE].
 PATTERNS = [
     ("EMAIL", r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+"),
+    # Everything after an address label at the start of a line, e.g. "Mailing address   742 Maple ...".
+    ("ADDRESS", r"(?im)^((?:mailing |home |billing |street |postal )?address)[ \t]*:?[ \t]+\S.*$",
+     r"\1   [ADDRESS]"),
+    # A number, capitalised words and a street type, then optional apartment and "City, ST 12345".
+    # Uses [ \t] instead of \s so a match never runs across a line break.
+    ("ADDRESS", r"\b\d{1,6}(?:[ \t]+[A-Z][\w'.-]*){1,4}?[ \t]+(?:" + STREET_TYPES + r")\b\.?"
+                r"(?:,?[ \t]+(?:Apt|Apartment|Suite|Ste|Unit|#)\.?[ \t]*[\w-]+)?" + CITY_STATE_ZIP),
+    ("ADDRESS", r"\bP\.?[ \t]?O\.?[ \t]+Box[ \t]+\d+" + CITY_STATE_ZIP),
     ("SSN", r"(?<!\d)\d{3}-\d{2}-\d{4}(?!\d)"),
     ("DATE OF BIRTH", r"(?i)\b(?:dob|date of birth|birth ?date)\b\W{0,3}"
                       r"(?:\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|[a-z]+\.? \d{1,2},? \d{4}|\d{1,2} [a-z]+ \d{4})"),
-    ("PHONE", r"(?<!\d)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\d)"),
+    # (?<!\w) and (?!\w) skip digits glued to letters, like the end of the member ID "BRH4829105736".
+    ("PHONE", r"(?<!\w)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}(?!\w)"),
     # 9-18 digits in a row, or card-style groups like 1234 5678 9012 3456.
-    ("BANK ACCOUNT", r"(?<!\d)(?:\d{9,18}|\d{4}(?:[ -]\d{4}){2,3})(?!\d)"),
+    ("BANK ACCOUNT", r"(?<!\w)(?:\d{9,18}|\d{4}(?:[ -]\d{4}){2,3})(?!\w)"),
     # Capital letters mixed with digits, e.g. insurance member IDs, passport and licence numbers.
     ("ID NUMBER", r"\b(?=[A-Z0-9]*\d)(?=[A-Z0-9]*[A-Z])[A-Z0-9]{8,20}\b"),
 ]
@@ -235,8 +249,8 @@ def redact(text, model_items):
         for s, e in reversed(spans):
             text = text[:s] + f"[{item['type']}]" + text[e:]
         found[item["type"]] = found.get(item["type"], 0) + len(spans)
-    for kind, pattern in PATTERNS:
-        text, count = re.subn(pattern, f"[{kind}]", text)
+    for kind, pattern, *replacement in PATTERNS:
+        text, count = re.subn(pattern, replacement[0] if replacement else f"[{kind}]", text)
         if count:
             found[kind] = found.get(kind, 0) + count
     # Drop warnings for values a pattern ended up redacting anyway.
