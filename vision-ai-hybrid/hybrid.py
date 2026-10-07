@@ -54,10 +54,15 @@ PATTERNS = [
 BIRTH_LABEL = r"(?i)\b(?:dob|birth|born)\b"
 
 # Questions asking for explanation, advice or planning always go to the cloud, even when
-# the data is in the file. The local model only picks the route when none of these appear.
+# the data is in the file. The local model only picks the route when no keyword matches.
 CLOUD_QUESTION = re.compile(
     r"(?i)\b(?:explain\w*|suggest\w*|recommend\w*|advi[cs]e\w*|compar\w*|plan|planning|"
     r"budget\w*|why|should|what (?:does|do) .+ mean)\b"
+)
+
+# Lookup questions stay local, unless a cloud word above also appears.
+LOCAL_QUESTION = re.compile(
+    r"(?i)\b(?:when|how much|how many|find|list|show|what (?:is|was|are|were) (?:my|the))\b"
 )
 
 NOT_FOUND = "could not find it in the text, check the preview"
@@ -141,6 +146,35 @@ def ask_cloud(prompt, file_path=None):
     return result.text.strip()
 
 
+def page_text(page):
+    """Rebuild each line of the page from word positions, so table rows stay on one line.
+
+    Plain get_text() puts every table cell on its own line, which separates labels from values.
+    Words more than 15pt apart are joined with three spaces to show the column gap.
+    """
+    words = sorted(page.get_text("words"), key=lambda w: (round(w[3]), w[0]))
+    lines, current, line_y = [], [], None
+    for x0, y0, x1, y1, word, *_ in words:
+        if line_y is not None and abs(y1 - line_y) > 3:
+            lines.append(current)
+            current = []
+        if not current:
+            line_y = y1
+        current.append((x0, x1, word))
+    if current:
+        lines.append(current)
+
+    out = []
+    for line in lines:
+        line.sort()
+        text, last_x1 = line[0][2], line[0][1]
+        for x0, x1, word in line[1:]:
+            text += ("   " if x0 - last_x1 > 15 else " ") + word
+            last_x1 = x1
+        out.append(text)
+    return "\n".join(out)
+
+
 def read_pdf(path, max_pages):
     """Pull the text out of each page. Scanned pages with no text are read by the local model."""
     doc = pymupdf.open(path)
@@ -149,7 +183,7 @@ def read_pdf(path, max_pages):
         if number > max_pages:
             print(f"Stopped after {max_pages} of {doc.page_count} pages (change with --pages).")
             break
-        text = page.get_text().strip()
+        text = page_text(page)
         if len(text) >= 20:
             print(f"Page {number}: text layer ({len(text):,} chars)")
         else:
@@ -253,7 +287,9 @@ def main():
     # Privacy is decided here in code, not by the route: patterns plus whatever the model flagged.
     redacted, found, skipped = redact(text, scan["private_items"])
     is_private = bool(found or scan["private_items"])
-    print(f"Summary: {scan['summary']}")
+    # The model is told to leave personal details out of the summary, but doesn't always.
+    summary, _, _ = redact(scan["summary"], scan["private_items"])
+    print(f"Summary: {summary}")
     if is_private:
         flagged = ", ".join(f"{kind} x{count}" for kind, count in found.items()) or "none matched in text"
         print(f"Private info: YES. Redacted: {flagged}")
@@ -263,12 +299,16 @@ def main():
         print("Private info: none found")
 
     cloud_word = CLOUD_QUESTION.search(args.question)
+    local_word = LOCAL_QUESTION.search(args.question)
     if args.route != "auto":
         route = args.route
         print(f"Route: {route} (forced with --route)")
     elif cloud_word:
         route = "cloud"
         print(f"Route: cloud (the question asks to \"{cloud_word.group(0)}\", which always goes to the cloud)")
+    elif local_word:
+        route = "local"
+        print(f"Route: local (\"{local_word.group(0)}\" is a lookup question, which stays local)")
     else:
         route = scan["route"]
         print(f"Route: {route} ({scan['reason']})")
@@ -294,7 +334,6 @@ def main():
             if is_pdf:
                 context = f"Document (private details replaced with tags like [PHONE]):\n{redacted}"
             else:
-                summary, _, _ = redact(scan["summary"], scan["private_items"])
                 context = (f"Description of an image: {summary}\n\n"
                            f"Text in the image (private details replaced with tags like [PHONE]):\n{redacted}")
             prompt = f"{context}\n\nAnswer this question using the information above: {cloud_question}"
