@@ -7,14 +7,14 @@ flowchart TD
     IN["File + question<br/>python hybrid.py file question"] --> TYPE{"PDF or image?"}
 
     subgraph LOCAL["Your computer: nothing leaves"]
-        TYPE -->|PDF| PAGES["1. Local read<br/>PyMuPDF pulls the text from each page<br/>first 10 pages by default, change with --pages"]
+        TYPE -->|PDF| PAGES["1. Local read<br/>PyMuPDF pulls the text from each page, keeping table rows on one line<br/>first 10 pages by default, change with --pages"]
         PAGES --> HASTEXT{"Page has text?"}
         HASTEXT -->|"no, scanned page"| PAGEOCR["gemma3 reads the page as an image"]
         HASTEXT -->|yes| SCAN
         PAGEOCR --> SCAN
         TYPE -->|image| SCAN["2. Local scan: one gemma3 call<br/>reads the whole file and the question<br/>returns summary, text in image, private items, route + reason"]
         SCAN --> PRIV["Privacy check, done in code<br/>patterns: phone, email, SSN, date of birth, account and ID numbers<br/>plus gemma3's flags: addresses and other IDs, matched even across line breaks<br/>gemma3's date-of-birth flags kept only next to a birth label"]
-        PRIV --> ROUTE{"Route?<br/>1. --route if given<br/>2. cloud if the question says explain, suggest, recommend,<br/>advise, compare, plan, budget, why, should, what does ... mean<br/>3. otherwise gemma3's pick"}
+        PRIV --> ROUTE{"Route?<br/>1. --route if given<br/>2. cloud if the question says explain, suggest, recommend,<br/>advise, compare, plan, budget, why, should, what does ... mean<br/>3. local if it says when, how much, how many, find, list, show,<br/>what is/was/are/were my/the<br/>4. otherwise gemma3's pick"}
         ROUTE -->|local| LANS["3. gemma3 answers<br/>from the full file"]
         ROUTE -->|cloud| KEY{"GEMINI_API_KEY set?"}
         KEY -->|no| LANS

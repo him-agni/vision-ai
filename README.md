@@ -77,7 +77,8 @@ PDF or image + question
                     - picks "local" (answer is in the file: find, summarise, describe)
                       or "cloud" (outside knowledge, reasoning, advice)
                     Questions that ask to explain, suggest, advise, compare, plan
-                    or budget always go to the cloud, whatever Gemma 3 picks
+                    or budget always go to the cloud; lookups (when, how much,
+                    find, list, what is my...) stay local, whatever Gemma 3 picks
   3. Answer         local                  -> Gemma 3 answers
                     cloud, nothing private -> whole file goes to Gemini
                     cloud, private         -> asks first, then sends only redacted text
